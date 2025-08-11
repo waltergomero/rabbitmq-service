@@ -14,7 +14,7 @@ export interface RabbitMQConfig {
 
 export const getRabbitMQConfig = (): RabbitMQConfig => {
   return {
-    url: process.env.RABBITMQ_URL || 'amqp://localhost:5672',
+    url: process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672',
     queue: process.env.RABBITMQ_QUEUE || 'task_queue',
     exchange: process.env.RABBITMQ_EXCHANGE || 'task_exchange',
     routingKey: process.env.RABBITMQ_ROUTING_KEY || 'task_routing_key',
@@ -24,6 +24,6 @@ export const getRabbitMQConfig = (): RabbitMQConfig => {
 };
 
 // Export individual values if needed
-export const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
+export const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
 export const RABBITMQ_EXCHANGE = process.env.RABBITMQ_EXCHANGE || 'task_exchange';
 export const RABBITMQ_QUEUE = process.env.RABBITMQ_QUEUE || 'task_queue';

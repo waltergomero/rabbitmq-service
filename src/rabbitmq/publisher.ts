@@ -1,36 +1,90 @@
 // Publisher for RabbitMQ messages
-import { connectRabbitMQ, getRabbitMQChannel } from '../utils/rabbitmq';
+import { connectRabbitMQ, getRabbitMQChannel, waitForConnection } from '../utils/rabbitmq';
 import { getRabbitMQConfig } from '../config/rabbitenv';
 import * as amqp from 'amqplib';
 
 const RabbitMQConfig = getRabbitMQConfig();
 
-export async function publishMessage(queue: string, message: string): Promise<void> {
-    try {
-        const { channel } = await connectRabbitMQ();
-        if (!channel) {
-            throw new Error('Channel is not available');
+// Enhanced publish with retry logic
+export async function publishMessage(queue: string, message: string, retries = 3): Promise<void> {
+    let attempt = 0;
+    
+    while (attempt < retries) {
+        try {
+            await waitForConnection();
+            const { channel } = await connectRabbitMQ();
+            if (!channel) {
+                throw new Error('Channel is not available');
+            }
+            
+            // Create queue if it doesn't exist 
+            await channel.assertQueue(queue, { durable: true });
+            
+            const sent = channel.sendToQueue(queue, Buffer.from(message), { 
+                persistent: true,
+                deliveryMode: 2 // Make message persistent
+            });
+            
+            if (!sent) {
+                throw new Error('Message was not sent - queue might be full');
+            }
+            
+            console.log(`Message sent to queue ${queue}: ${message}`);
+            return;
+            
+        } catch (error) {
+            attempt++;
+            console.error(`Failed to publish message (attempt ${attempt}/${retries}):`, error);
+            
+            if (attempt >= retries) {
+                throw new Error(`Failed to publish message after ${retries} attempts: ${error}`);
+            }
+            
+            // Wait before retry with exponential backoff
+            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+            await new Promise(resolve => setTimeout(resolve, delay));
         }
-        // Create queue if it doesn't exist 
-        await channel.assertQueue(queue, { durable: true });
-        channel.sendToQueue(queue, Buffer.from(message), { persistent: true });
-        console.log(`Message sent to queue ${queue}: ${message}`);
-    } catch (error) {
-        console.error('Failed to publish message:', error);
     }
 }
-export async function publishToExchange(exchange: string, routingKey: string, message: string): Promise<void> {
-    try {
-        const { channel } = await connectRabbitMQ();
-        if (!channel) {
-            throw new Error('Channel is not available');
+
+export async function publishToExchange(exchange: string, routingKey: string, message: string, retries = 3): Promise<void> {
+    let attempt = 0;
+    
+    while (attempt < retries) {
+        try {
+            await waitForConnection();
+            const { channel } = await connectRabbitMQ();
+            if (!channel) {
+                throw new Error('Channel is not available');
+            }
+            
+            // Create exchange if it doesn't exist
+            await channel.assertExchange(exchange, 'direct', { durable: true });
+            
+            const sent = channel.publish(exchange, routingKey, Buffer.from(message), { 
+                persistent: true,
+                deliveryMode: 2
+            });
+            
+            if (!sent) {
+                throw new Error('Message was not sent - channel might be blocked');
+            }
+            
+            console.log(`Message sent to exchange ${exchange} with routing key ${routingKey}: ${message}`);
+            return;
+            
+        } catch (error) {
+            attempt++;
+            console.error(`Failed to publish message to exchange (attempt ${attempt}/${retries}):`, error);
+            
+            if (attempt >= retries) {
+                throw new Error(`Failed to publish message to exchange after ${retries} attempts: ${error}`);
+            }
+            
+            // Wait before retry with exponential backoff
+            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+            await new Promise(resolve => setTimeout(resolve, delay));
         }
-        // Create exchange if it doesn't exist
-        await channel.assertExchange(exchange, 'direct', { durable: true });
-        channel.publish(exchange, routingKey, Buffer.from(message), { persistent: true });
-        console.log(`Message sent to exchange ${exchange} with routing key ${routingKey}: ${message}`);
-    } catch (error) {
-        console.error('Failed to publish message to exchange:', error);
     }
 }
 export async function closePublisher(): Promise<void> {
